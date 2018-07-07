@@ -1,0 +1,298 @@
+#+TITLE: Api Routes Protected By NonAdmin Auth
+
+
+* Introduction 
+
+Defining the portion of the Api that can be accessed by =NonAdmin= users.
+* Language Extensions and Imports 
+
+#+NAME: extns_and_imports
+#+BEGIN_SRC haskell 
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators #-}
+
+module NonAdminApi where
+
+import Prelude ()
+import Prelude.Compat
+
+import Control.Monad.Except
+import Control.Monad.Reader
+import Data.Aeson.Compat
+import Data.Aeson.Types
+import Data.Attoparsec.ByteString
+import Data.ByteString (ByteString)
+import Data.List
+import Data.Maybe
+import Data.String.Conversions
+import Data.Time.Calendar
+import GHC.Generics
+import Lucid
+import Network.HTTP.Media ((//), (/:))
+import Network.Wai
+import Network.Wai.Handler.Warp
+import Servant
+import System.Directory
+import Text.Blaze
+import Text.Blaze.Html.Renderer.Utf8
+import qualified Data.Aeson.Parser
+import qualified Text.Blaze.Html
+
+import Data.Proxy
+import Data.Text
+
+import Database.Persist
+
+import Models
+
+import Servant.API
+#+END_SRC
+* REST
+
+** =/logout=
+   
+*** API Design
+
+  - URL :: /logout
+  - Method :: POST
+
+  - Headers ::
+    
+    + Content-type: application/json
+    + Cookie: <value>
+
+  - Data Params ::  
+    #+BEGIN_EXAMPLE
+    {
+    "userId": <value>,
+    "email" : <value>,
+    "roles" : {
+                "role" : <value>
+              }
+    }   
+    #+END_EXAMPLE
+       
+  - Success Response ::
+    + Code: 200
+
+    + Content :: 
+      #+BEGIN_EXAMPLE
+      {"userId" : "<value",
+       "email"  : "<value",
+       "roles"  : {"role" : "<value>"}
+      }
+      #+END_EXAMPLE     
+
+
+  - Error Response ::
+    + Code: 403 
+
+    OR
+
+    + Code: 400 Bad Request
+
+    OR
+
+    + Code: 500
+
+  - Example ::
+    #+BEGIN_EXAMPLE
+    http://localhost:8000/logout
+    #+END_EXAMPLE
+
+*** Implementation
+
+#+NAME: logout
+#+BEGIN_SRC haskell
+
+type LogoutApi = Header "Cookie" String :> "logout" :> ReqBody '[JSON] Session :> Post '[JSON] (Maybe (Session)) 
+
+#+END_SRC
+** =/showUsers=
+
+*** API Design
+
+  - URL :: /showUsers
+  - Method :: GET
+  - Headers ::
+    
+    + Cookie: <session-id>
+
+  - URL Params :: None 
+       
+  - Success Response ::
+    + Code: 200
+
+    + Content :: list of users - name and email
+      #+BEGIN_EXAMPLE
+    [
+      {
+        "name"  : <value>,
+        "email" : <value>  
+      }
+    ]
+      #+END_EXAMPLE
+
+  - Error Response ::
+    + Code: 403 
+
+    OR
+
+    + Code: 400 Bad Request
+
+    OR
+
+    + Code: 500
+
+  - Example ::
+    #+BEGIN_EXAMPLE
+    http://localhost:8000/showUsers
+    #+END_EXAMPLE
+
+*** Implementation
+
+#+NAME: show_users
+#+BEGIN_SRC haskell
+
+type ShowUsersApi = Header "Cookie" String :> "showUsers" :> Get '[JSON] [ShowUserData] 
+
+#+END_SRC
+
+** =/setName=
+
+*** API Design
+
+  - URL :: /setName
+
+  - Method :: POST
+
+  - Data Params ::  
+    #+BEGIN_EXAMPLE
+    {
+    "current-data" : "soft-kitty",
+    "new-data" : "warm-kitty"    
+    }
+    #+END_EXAMPLE		   
+
+  - Success Response ::
+    + Code: 200
+
+    + Content ::
+      #+BEGIN_EXAMPLE
+    {
+	"name"  : "warm-kitty",
+    "email" : "soft_kitty@cat.com",
+    "roles" :
+              {"role":"NonAdmin"}
+    }
+      #+END_EXAMPLE
+		
+  - Error Response ::
+    + Code: 401 
+
+    OR
+
+    + Code: 400 Bad Request
+
+    OR
+
+    + Code: 500
+
+    + Content: { error : Exception String}
+
+  - Example ::
+    #+BEGIN_EXAMPLE
+    http://localhost:8000/setName
+    #+END_EXAMPLE
+
+*** Implementation
+
+#+NAME: set_name
+#+BEGIN_SRC haskell
+
+type SetNameApi = Header "Cookie" String :> "setName" :> ReqBody '[JSON] UpdateUserData :> Post '[JSON] (Maybe (User)) 
+
+#+END_SRC
+
+** =/setEmail=
+
+*** API Design
+
+  - URL :: /setEmail
+
+  - Method :: POST
+
+  - Data Params ::  
+    #+BEGIN_EXAMPLE
+    {
+    "current-data" : "small-cat@gmail.com",
+    "new-data" : "small@cat.com"    
+    }
+    #+END_EXAMPLE		   
+
+  - Success Response ::
+    + Code: 200
+
+    + Content ::
+      #+BEGIN_EXAMPLE
+    {
+	"name"  : "small-cat",
+    "email" : "small@cat.com",
+    "roles" :
+              {"role":"NonAdmin"}
+    }
+      #+END_EXAMPLE
+		
+  - Error Response ::
+    + Code: 401 
+
+    OR
+
+    + Code: 400 Bad Request
+
+    OR
+
+    + Code: 500
+
+    + Content: { error : Exception String}
+
+  - Example ::
+    #+BEGIN_EXAMPLE
+    http://localhost:8000/setEmail
+    #+END_EXAMPLE
+
+*** Implementation
+
+#+NAME: set_email
+#+BEGIN_SRC haskell
+
+type SetEmailApi = Header "Cookie" String :> "setEmail" :> ReqBody '[JSON] UpdateUserData :> Post '[JSON] (Maybe (User)) 
+
+#+END_SRC
+* API
+
+Combining the above APIs into one type.
+  
+#+NAME: non_admin_routes
+#+BEGIN_SRC haskell
+
+type NonAdminRoutes = ShowUsersApi :<|> LogoutApi :<|> SetNameApi :<|> SetEmailApi
+#+END_SRC
+
+* Tangling
+
+#+BEGIN_SRC haskell :eval no :noweb yes :tangle NonAdminApi.hs 
+<<extns_and_imports>>
+<<show_users>>
+<<logout>>
+<<set_name>>
+<<set_email>>
+<<non_admin_routes>>
+
+#+END_SRC

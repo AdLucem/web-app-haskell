@@ -1,0 +1,16 @@
+#+TITLE: web-app-haskell
+
+An user directory web app written in Haskell.
+
+
+* Introduction
+
+This application is an implementation of a set of requirements for an =User
+Directory Web App=. The app stores a set of =Users= and their details, and
+allows us to perform CRUD operations.
+
+* To Test And Run App
+
+#+BEGIN_EXAMPLE
+./testAndRun.sh
+#+END_EXAMPLE
